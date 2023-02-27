@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - "*"
+
+jobs:
+
+  "Build":
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # prevent this from firing
+    container:
+      image: swift:5.7.0-amazonlinux2
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: yum -y install python3 python3-devel python3-pip libuuid-devel libxml2-devel zip
+    - name: Install aws-sam-cli
+      run: pip3 install awscli aws-sam-cli
+    - name: Compile
+      run: swift build --enable-test-discovery --product Run -c release -Xswiftc -static-stdlib -Xswiftc -cross-module-optimization
+    - name: Package Executables
+      run: scripts/package.sh Run
+    - name: Upload lambda.zip
+      uses: yvesgurcan/deploy-lambda-function@v0.0.5
+      with:
+        package: .build/lambda/Run/lambda.zip
+        function-name: api
+        AWS_REGION: us-east-1
+        AWS_SECRET_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
