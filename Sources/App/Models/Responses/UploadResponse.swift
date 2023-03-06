@@ -7,6 +7,7 @@
 
 import Vapor
 
-struct UploadResponse: Content {
-    var uploadKey: String
+public struct UploadResponse: Content {
+    var url: String
+    var key: String
 }

@@ -5,61 +5,54 @@ import Vapor
 
 @available(macOS 12, *)
 public extension Application {
+    private final class AWSStorage {
+        let accessKey: String
+        let secretKey: String
+        public var client: AWSClient?
 
-    struct AWSClientContainer {
-        private final class Storage {
-            let accessKey: String
-            let secretKey: String
-            public var client: AWSClient?
-
-            init(accessKey: String, secretKey: String) {
-                self.accessKey = accessKey
-                self.secretKey = secretKey
-            }
-        }
-
-        private struct Key: StorageKey {
-            typealias Value = Storage
-        }
-
-        private var storage: Storage {
-            if self.application.storage[Key.self] == nil {
-                self.initialize()
-            }
-            return self.application.storage[Key.self]!
-        }
-
-        public func initialize() {
-            guard
-                let awsAccessKey = Environment.process.AWS_ACCESS_KEY1
-            else {
-                fatalError("No value was found at the given public key environment 'AWS_ACCESS_KEY1'")
-            }
-            guard
-                let awsAccessSecret = Environment.process.AWS_ACCESS_SECRET1
-            else {
-                fatalError("No value was found at the given public key environment 'AWS_ACCESS_SECRET1'")
-            }
-
-            self.application.storage[Key.self] = .init(accessKey: awsAccessKey, secretKey: awsAccessSecret)
-        }
-
-        fileprivate let application: Application
-
-        init(application: Application) {
-            self.application = application
-            self.initialize()
-            self.application.storage[Key.self]!.client = .init(credentialProvider: .static(accessKeyId: self.storage.accessKey, secretAccessKey: self.storage.secretKey), httpClientProvider: .createNew)
-        }
-
-        var client: AWSClient {
-            self.application.storage[Key.self]!.client!
+        init(accessKey: String, secretKey: String) {
+            self.accessKey = accessKey
+            self.secretKey = secretKey
         }
     }
 
-    var awsClientContainer: AWSClientContainer { AWSClientContainer(application: self) }
-    
+    private struct Key: StorageKey {
+        typealias Value = AWSStorage
+    }
 
+    private var awsStorage: AWSStorage {
+        if self.storage[Key.self] == nil {
+            self.initialize()
+        }
+        return self.storage[Key.self]!
+    }
+
+    func initialize() {
+        guard
+            let awsAccessKey = Environment.process.AWS_ACCESS_KEY1
+        else {
+            fatalError("No value was found at the given public key environment 'AWS_ACCESS_KEY1'")
+        }
+        guard
+            let awsAccessSecret = Environment.process.AWS_ACCESS_SECRET1
+        else {
+            fatalError("No value was found at the given public key environment 'AWS_ACCESS_SECRET1'")
+        }
+
+        self.storage[Key.self] = AWSStorage(accessKey: awsAccessKey, secretKey: awsAccessSecret)
+    }
+
+    var awsClient: AWSClient {
+        if let cc = self.storage[Key.self]?.client {
+            return cc
+        }
+        else {
+            self.initialize()
+            self.storage[Key.self]!.client = .init(credentialProvider: .static(accessKeyId: self.awsStorage.accessKey, secretAccessKey: self.awsStorage.secretKey), httpClientProvider: .createNew)
+            return self.storage[Key.self]!.client!
+        }
+        
+    }
 }
 
 // Called before your application initializes.
