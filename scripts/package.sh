@@ -8,8 +8,6 @@ target=.build/lambda/$executable
 rm -rf "$target"
 mkdir -p "$target"
 cp ".build/release/$executable" "$target/"
-cp -R "Locales" "$target/"
 cd "$target"
 ln -s "$executable" "bootstrap"
 zip --symlinks lambda.zip *
-zip -r lambda.zip Locales
