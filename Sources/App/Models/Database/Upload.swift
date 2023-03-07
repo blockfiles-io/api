@@ -50,14 +50,20 @@ final class Upload: Model {
     var maxHolders: Int
     
     // 0 = uploaded, not paid
-    // 1 = uploaded paid and shipped
+    // 1 = uploaded and paid
+    // 2 = upload, paid and stored
     
     @Field(key: "status")
     var status: Int
+    
+    @Field(key: "size")
+    var size: Int
 
-    //
     @Field(key: "blockchain")
     var blockchain: String
+    
+    @Field(key: "contentType")
+    var contentType: String
 
     @Field(key: "downloads")
     var downloads: Int

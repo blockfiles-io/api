@@ -1,5 +1,5 @@
 import Vapor
 
-struct UploadInput: Content {
+public struct UploadInput: Content {
     let uploadKey: String
 }

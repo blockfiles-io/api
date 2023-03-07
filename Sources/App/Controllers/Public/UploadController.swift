@@ -12,81 +12,6 @@ import SotoS3
 import Web3
 import Web3ContractABI
 
-extension StringProtocol {
-    func dropping<S: StringProtocol>(prefix: S) -> SubSequence { hasPrefix(prefix) ? dropFirst(prefix.count) : self[...] }
-    var hexaToDecimal: Int { Int(dropping(prefix: "0x"), radix: 16) ?? 0 }
-    var hexaToDecimalString: String { "\(hexaToDecimal)" }
-}
-
-
-struct S3UploadResponse: Content {
-    var size:Int64
-    var sizeInMb: Int64
-    
-    init(size: Int64) {
-        self.size = size
-        self.sizeInMb = (size / 1000000) + 1
-    }
-}
-struct TransferAlchemyRequest: Codable {
-    struct Params: Codable {
-        var fromBlock: String
-        var toBlock: String
-        var toAddress: String
-        var contractAddresses:[String]
-        var category: [String]
-    }
-    var id: Int = 1
-    var jsonrpc: String = "2.0"
-    
-    var params:[Params]
-    var method: String
-}
-struct AlchemyRequest: Codable {
-    var id: Int = 1
-    var jsonrpc: String = "2.0"
-    var params:[String]
-    var method: String
-}
-struct FullUploadResponse: Content {
-    var url: String
-    var key: String
-    var id: Int?
-    var tokenId: String?
-    var transactionTx: String
-    var expectedPayment: Double
-    var payment: Double
-    var royaltyFee: Double
-    var name: String
-    var desc: String
-    var finalUrl: String
-    var storage: String
-    var maxHolders: Int
-    var status: Int
-    var blockchain: String
-    var downloads: Int
-    var createdAt: Date?
-    
-    init (_ up: Upload) {
-        self.url = up.finalUrl
-        self.key = up.key
-        self.tokenId = up.tokenId
-        self.transactionTx = up.transactionTx
-        self.expectedPayment = up.expectedPayment
-        self.payment = up.payment
-        self.royaltyFee = up.royaltyFee
-        self.name = up.name
-        self.desc = up.desc
-        self.finalUrl = up.finalUrl
-        self.storage = up.storage
-        self.maxHolders = up.maxHolders
-        self.status = up.status
-        self.blockchain = up.blockchain
-        self.downloads = up.downloads
-        self.createdAt = up.createdAt
-    }
-}
-
 @available(macOS 12, *)
 struct UploadController: RouteCollection {
     func boot(routes: RoutesBuilder) throws {
@@ -143,7 +68,17 @@ struct UploadController: RouteCollection {
             var storage: String // only s3 for now
         }
         let requestData = try req.content.decode(RequestData.self)
+        let s3 = S3(client: req.application.awsClient)
         let upload = Upload()
+        let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: requestData.key))
+        upload.size = 0
+        upload.contentType = ""
+        if let s = file.contentLength {
+            upload.size = Int(s)
+        }
+        if let s = file.contentType {
+            upload.contentType = s
+        }
         upload.blockchain = requestData.network
         upload.key = requestData.key
         upload.transactionTx = requestData.transactionTx
@@ -251,7 +186,7 @@ struct UploadController: RouteCollection {
         ], from: String(res.result.input.suffix(res.result.input.count-10)))
         let adr = parsed["owner"] as! EthereumAddress
         let ownerAddress = adr.hex(eip55: true)
-        
+        print("owner: ", ownerAddress)
         // step 2: get transfers for this transaction
         struct AlchemyTransferResponse: Codable {
             struct Result: Codable {
@@ -268,7 +203,17 @@ struct UploadController: RouteCollection {
             }
             var result: Result
         }
-        let transferRequestInput = TransferAlchemyRequest(params: [TransferAlchemyRequest.Params(fromBlock: res.result.blockNumber, toBlock: res.result.blockNumber, toAddress: ownerAddress, contractAddresses: [String.getBlockfilesSmartContractAddress(upload.blockchain)], category: ["erc721"])], method: "alchemy_getAssetTransfers")
+        let transferRequestInput = TransferAlchemyRequest(params: [
+            TransferAlchemyRequest.Params(
+                fromBlock: res.result.blockNumber,
+                toBlock: res.result.blockNumber,
+                toAddress: ownerAddress,
+                contractAddresses: [
+                    String.getBlockfilesSmartContractAddress(upload.blockchain)
+                ],
+                category: ["erc721"])
+        ],
+                                                          method: "alchemy_getAssetTransfers")
         let inputString2 = String(data: try JSONEncoder().encode(transferRequestInput), encoding: .utf8)!
         let res2 = try await req.client.post("\(url)", beforeSend: { r in
             r.body = ByteBufferAllocator().buffer(capacity: inputString2.count)
