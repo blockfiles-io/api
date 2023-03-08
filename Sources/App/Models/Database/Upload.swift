@@ -70,6 +70,9 @@ final class Upload: Model {
 
     @Field(key: "downloads")
     var downloads: Int
+    
+    @Field(key: "fileDownloads")
+    var fileDownloads: Int
 
     @Timestamp(key: "createdAt", on: .create)
     var createdAt: Date?

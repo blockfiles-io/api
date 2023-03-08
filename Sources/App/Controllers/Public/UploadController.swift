@@ -86,9 +86,10 @@ struct UploadController: RouteCollection {
         upload.royaltyFee = requestData.royaltyFee
         upload.maxHolders = requestData.maxHolders
         upload.name = requestData.name
-        upload.slug = requestData.name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.").inverted)
+        upload.slug = requestData.name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted)
         upload.desc = ""
         upload.downloads = 0
+        upload.fileDownloads = 0
         upload.status = 0
         upload.storage = requestData.storage
         try await upload.save(on: req.db)

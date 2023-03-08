@@ -362,6 +362,8 @@ struct FileController: RouteCollection {
                 }
                 var signedURL:String? = nil
                 if allowedToDownload {
+                    upload.fileDownloads = upload.fileDownloads + 1
+                    try await upload.save(on: req.db)
                     let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
                     let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
                     let url = URL(string: "https://s3.amazonaws.com/final.blockfiles.io/\(upload.key)")!
