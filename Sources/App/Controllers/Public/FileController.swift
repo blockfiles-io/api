@@ -12,6 +12,8 @@ import Web3
 import Web3ContractABI
 import CryptoSwift
 import secp256k1
+import SotoSignerV4
+import SotoS3
 
 // Not the prettiest, but necessary since we are waiting for this PR:
 // https://github.com/Boilertalk/Web3.swift/pull/124
@@ -188,6 +190,14 @@ extension Array where Element == Byte {
         return bytes
     }
 }
+struct ValidationResponse: Content {
+    var success: Bool
+}
+struct DownloadResponse: Content {
+    var canBuy: Bool
+    var owns: Bool
+    var url:String?
+}
 
 @available(macOS 12, *)
 struct FileController: RouteCollection {
@@ -195,7 +205,7 @@ struct FileController: RouteCollection {
         let group = routes
         group.get(":tokenId", use: self.getFile)
         group.get(["download", ":tokenId"], use: self.download)
-        group.get(["checkPurchase", ":transactionHash"], use: self.checkPurchase)
+        group.get(["checkPurchase", ":transactionHash", ":tokenId"], use: self.checkPurchase)
     }
     
     func getFile(_ req: Request) async throws -> FullUploadResponse {
@@ -261,25 +271,7 @@ struct FileController: RouteCollection {
        
         return upload
     }
-    /*func bytesToString(_ hex: [UInt8]) -> String {
-        let length = string.count
-        if length & 1 != 0 {
-            return nil
-        }
-        var bytes = [UInt8]()
-        bytes.reserveCapacity(length/2)
-        var index = string.startIndex
-        for _ in 0..<length/2 {
-            let nextIndex = string.index(index, offsetBy: 2)
-            if let b = UInt8(string[index..<nextIndex], radix: 16) {
-                bytes.append(b)
-            } else {
-                return nil
-            }
-            index = nextIndex
-        }
-        return bytes
-    }*/
+
     func stringToBytes(_ string: String) -> [UInt8]? {
         let length = string.count
         if length & 1 != 0 {
@@ -299,49 +291,201 @@ struct FileController: RouteCollection {
         }
         return bytes
     }
-    func download(_ req: Request) async throws -> HTTPStatus{
+    func download(_ req: Request) async throws -> DownloadResponse {
         if let code = req.parameters.get("tokenId") {
             
             if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == code).first() {
                 let url = String.getAlchemyApiUrl(upload.blockchain)
                 let web3 = Web3(rpcURL: url)
                 
-                let sign = ((try? req.query.get(at: "sign")) ?? "").replacingOccurrences(of: "0x", with: "")
-                let t = ((try? req.query.get(at: "t")) ?? "")
-                
-                let rString = String(sign.prefix(64))
-                let bytes1: [UInt8] = stringToBytes(rString)!
-                let r1 = EthereumQuantity(bytes1)
-                let sString = String(String(sign.suffix(sign.count-64)).prefix(64))
-                let bytes2: [UInt8] = stringToBytes(sString)!
-                let s1 = EthereumQuantity(bytes2)
-                let v = UInt64(String(sign.suffix(2)), radix: 16)!-27
-                //let vString = "\(v)".makeBytes()
-                let v1 = EthereumQuantity(v.makeBytes())
-                var msg = "Hi from blockfiles.io!\n\nYou sign this message so we can authenticate your address.\n\n\nTime:\(t)"
-                
-                let str = "\u{19}Ethereum Signed Message:\n\(msg.count)\(msg)"
-                let bytes = str.makeBytes()
-                
-                let k = try EthereumPublicKeyCustom(message: bytes, v: v1, r: r1, s: s1)
-                print("key: ",k.address.hex(eip55: false))
-                
                 let realUpload = try await self.updateToken(upload, on: req)
                 var allowedToDownload = false
+                var canBuy = false
+                var owns = false
                 if realUpload.royaltyFee == 0 {
                     allowedToDownload = true
                 }
-                return .ok
+                else {
+                    let sign = ((try? req.query.get(at: "sign")) ?? "").replacingOccurrences(of: "0x", with: "")
+                    let t = ((try? req.query.get(at: "t")) ?? "")
+                    
+                    if sign == "" || t == "" {
+                        throw Abort(.badRequest, reason: "Please verify through your wallet.")
+                    }
+                    
+                    let rString = String(sign.prefix(64))
+                    let bytes1: [UInt8] = stringToBytes(rString)!
+                    let r1 = EthereumQuantity(bytes1)
+                    let sString = String(String(sign.suffix(sign.count-64)).prefix(64))
+                    let bytes2: [UInt8] = stringToBytes(sString)!
+                    let s1 = EthereumQuantity(bytes2)
+                    let v = UInt64(String(sign.suffix(2)), radix: 16)!-27
+                    //let vString = "\(v)".makeBytes()
+                    let v1 = EthereumQuantity(v.makeBytes())
+                    var msg = "Hi from blockfiles.io!\n\nYou sign this message so we can authenticate your address.\n\n\nTime:\(t)"
+                    
+                    let str = "\u{19}Ethereum Signed Message:\n\(msg.count)\(msg)"
+                    let bytes = str.makeBytes()
+                    
+                    let k = try EthereumPublicKeyCustom(message: bytes, v: v1, r: r1, s: s1)
+                    let ethAddress:String = k.address.hex(eip55: false)
+                    
+                    let accessContractAddress = EthereumAddress(hexString: String.getBlockfilesAccessSmartContractAddress(upload.blockchain))
+                    let accessContract = try web3.eth.Contract(json: String.getBlockfilesAccessAbiData(), abiKey: nil, address: accessContractAddress)
+                    var holdsAccessTokens = 0
+                    try await withCheckedThrowingContinuation { continuation in
+                        let tid:Int = Int(upload.tokenId!)!
+                        accessContract["balanceOf"]?(k.address, tid).call() { a, b in
+                            if let r = a {
+                                let str = "\(r[""]!)"
+                                holdsAccessTokens = Int(str)!
+                                continuation.resume()
+                            }
+                        }
+                    }
+                    owns = holdsAccessTokens > 0
+                    
+                }
+                if owns {
+                    allowedToDownload = true
+                }
+                if upload.maxHolders > 0 {
+                    if upload.downloads < upload.maxHolders {
+                        canBuy = true
+                    }
+                }
+                else {
+                    canBuy = true
+                }
+                var signedURL:String? = nil
+                if allowedToDownload {
+                    let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
+                    let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
+                    let url = URL(string: "https://s3.amazonaws.com/final.blockfiles.io/\(upload.key)")!
+                    let s3 = S3(client: req.application.awsClient)
+                    //var headers = HTTPHeaders()
+                    let fn = upload.name.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)!
+                    //headers.replaceOrAdd(name: "response-content-disposition", value: "attachment;filename=\"\(fn)\"")
+                    signedURL = signer.signURL(url: url, method: .GET, expires: .minutes(60)).absoluteString// + "&response-content-disposition=attachment;filename=\"\(fn)\""
+                    
+                }
+                return DownloadResponse(canBuy: canBuy, owns: owns, url: signedURL)
             }
         }
         throw Abort(.badRequest, reason: "Cannot load it.")
     }
-    func checkPurchase(_ req: Request) async throws -> HTTPStatus{
-        if let code = req.parameters.get("transactionHash") {
-            return .ok
-            
+    func checkPurchase(_ req: Request) async throws -> ValidationResponse {
+        if let transactionHash = req.parameters.get("transactionHash"), let tokenId = req.parameters.get("tokenId") {
+            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == tokenId).first() {
+                let processed = try await validateAccess(upload: upload, transactionTx: transactionHash, on: req)
+                return ValidationResponse(success: processed)
+            }
         }
         throw Abort(.badRequest, reason: "Cannot load it.")
+    }
+    
+    func validateAccess(upload: Upload, transactionTx: String, on req: Request) async throws -> Bool {
+        // step 0: make sure we have not ever used this transaction before
+        let uploads = try await Access.query(on: req.db).filter(\.$transactionTx == transactionTx).count()
+        if uploads > 0 {
+            Abort(.badRequest, reason: "Already used this transaction")
+        }
+        
+        
+        // step 1: get the transaction
+        // we get the transaction and validate that the owner, sender and receiver are correct
+        struct AlchemyTransactionResponse: Codable {
+            struct Result: Codable {
+                var blockHash: String
+                var blockNumber: String
+                var hash: String
+                var chainId: String
+                var from: String
+                var input: String
+                var value: String
+            }
+            var result: Result
+        }
+        let url = String.getAlchemyApiUrl(upload.blockchain)
+        let input = AlchemyRequest(params: [transactionTx], method: "eth_getTransactionByHash")
+        let inputString = String(data: try JSONEncoder().encode(input), encoding: .utf8)!
+        let res1 = try await req.client.post("\(url)", beforeSend: { r in
+            r.body = ByteBufferAllocator().buffer(capacity: inputString.count)
+            r.body?.writeString(inputString)
+        })
+        let res = try res1.content.decode(AlchemyTransactionResponse.self)
+        let web3 = Web3(rpcURL: url)
+        let parsed = try web3.eth.abi.decodeParameters([
+            SolidityFunctionParameter(name: "tokenId", type: .uint256),
+            SolidityFunctionParameter(name: "owner", type: .address)
+            
+        ], from: String(res.result.input.suffix(res.result.input.count-10)))
+        let adr = parsed["owner"] as! EthereumAddress
+        let tokenId = parsed["tokenId"] as! BigUInt
+        let ownerAddress = adr.hex(eip55: true)
+        
+        // step 2: get transfers for this transaction
+        struct AlchemyTransferResponse: Codable {
+            struct Result: Codable {
+                struct Transfer: Codable {
+                    struct Erc1155Metadata: Codable {
+                        var tokenId: String
+                    }
+                    var blockNum: String
+                    var hash: String
+                    var from: String
+                    var to: String
+                    var erc1155Metadata: [Erc1155Metadata]?
+                }
+                var transfers: [Transfer]
+            }
+            var result: Result
+        }
+        let transferRequestInput = TransferAlchemyRequest(params: [
+            TransferAlchemyRequest.Params(
+                fromBlock: res.result.blockNumber,
+                toBlock: res.result.blockNumber,
+                toAddress: ownerAddress,
+                contractAddresses: [
+                    String.getBlockfilesAccessSmartContractAddress(upload.blockchain)
+                ],
+                category: ["erc1155"])
+        ],
+                                                          method: "alchemy_getAssetTransfers")
+        let inputString2 = String(data: try JSONEncoder().encode(transferRequestInput), encoding: .utf8)!
+        let res2 = try await req.client.post("\(url)", beforeSend: { r in
+            r.body = ByteBufferAllocator().buffer(capacity: inputString2.count)
+            r.body?.writeString(inputString2)
+        })
+        let transfers = try res2.content.decode(AlchemyTransferResponse.self).result.transfers
+        if transfers.count == 0 {
+            throw Abort(.badRequest, reason: "No transfers to the owner, invalid transaction tx.")
+        }
+        var validTransaction = false
+        for transfer in transfers {
+            if transfer.from.lowercased() == "0x0000000000000000000000000000000000000000" &&
+                transfer.to.lowercased() == ownerAddress.lowercased() &&
+                transfer.hash.lowercased() == transactionTx.lowercased() &&
+                transfer.blockNum.lowercased() == res.result.blockNumber.lowercased() &&
+                transfer.erc1155Metadata != nil &&
+                transfer.erc1155Metadata!.count > 0 &&
+                transfer.erc1155Metadata![0].tokenId.hexaToDecimal == Int(upload.tokenId!)!
+            {
+                validTransaction = true
+            }
+        }
+        if validTransaction {
+            let access = Access()
+            access.tokenId = upload.tokenId!
+            access.transactionTx = transactionTx
+            access.uploadTokenId = upload.tokenId!
+            try await access.save(on: req.db)
+            return true
+        }
+        else {
+            print("f: ", transfers)
+        }
+        return false
     }
     
    
