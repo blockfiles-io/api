@@ -160,8 +160,8 @@ struct UploadController: RouteCollection {
         // we get the transaction and validate that the owner, sender and receiver are correct
         struct AlchemyTransactionResponse: Codable {
             struct Result: Codable {
-                var blockHash: String
-                var blockNumber: String
+                var blockHash: String?
+                var blockNumber: String?
                 var hash: String
                 var chainId: String
                 var from: String
@@ -205,10 +205,13 @@ struct UploadController: RouteCollection {
             }
             var result: Result
         }
+        if res.result.blockNumber == nil {
+            return false
+        }
         let transferRequestInput = TransferAlchemyRequest(params: [
             TransferAlchemyRequest.Params(
-                fromBlock: res.result.blockNumber,
-                toBlock: res.result.blockNumber,
+                fromBlock: res.result.blockNumber!,
+                toBlock: res.result.blockNumber!,
                 toAddress: ownerAddress,
                 contractAddresses: [
                     String.getBlockfilesSmartContractAddress(upload.blockchain)
@@ -231,7 +234,7 @@ struct UploadController: RouteCollection {
             if transfer.from.lowercased() == "0x0000000000000000000000000000000000000000" &&
                 transfer.to.lowercased() == ownerAddress.lowercased() &&
                 transfer.hash.lowercased() == upload.transactionTx.lowercased() &&
-                transfer.blockNum.lowercased() == res.result.blockNumber.lowercased() &&
+                transfer.blockNum.lowercased() == res.result.blockNumber!.lowercased() &&
                 transfer.tokenId != nil {
                 validTransaction = true
                 tokenId = transfer.tokenId!.hexaToDecimal
