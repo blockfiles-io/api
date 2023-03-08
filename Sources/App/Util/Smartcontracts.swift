@@ -9,11 +9,26 @@ import Vapor
 
 extension String {
     static var ARB_GOERLI_BLOCKFILES = "0x91CCb03f4c965831399F1915c178cb5853FfAD6e"
-    static var ARB_GOERLI_BLOCKFILESACCESS = "0xF29284Ac9F9a0f381E08D8907B8CA90683E421ed"
+    static var ARB_GOERLI_BLOCKFILESACCESS = "0xFc8E2198b55e5E8B98a929847f27b8608479D13d"
+    static var ETH_GOERLI_BLOCKFILES = "0xFD6FaF04156D9392EB1D05f092c2D00A9FA5E63F"
+    static var ETH_GOERLI_BLOCKFILESACCESS = "0x37fe0aC287B8c061cf1cb3a886E1BF17b89a658A"
+    static var OPT_GOERLI_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
+    static var OPT_GOERLI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
+    static var SPH_SPHINX_BLOCKFILES = "0x7d57b63596d347fcc0801b1ce3fc5c1e8d82324d"
+    static var SPH_SPHINX_BLOCKFILESACCESS = "0x5e41ccc3599785aa5f66dfc3da6cd1f9c8e64d63"
     
     static func getBlockfilesSmartContractAddress(_ network: String) -> String {
         if network == "arbGoerli" {
             return String.ARB_GOERLI_BLOCKFILES
+        }
+        else if network == "optGoerli" {
+            return String.OPT_GOERLI_BLOCKFILES
+        }
+        else if network == "goerli" {
+            return String.ETH_GOERLI_BLOCKFILES
+        }
+        else if network == "sphinx" {
+            return String.SPH_SPHINX_BLOCKFILES
         }
         return ""
     }
@@ -21,12 +36,36 @@ extension String {
         if network == "arbGoerli" {
             return String.ARB_GOERLI_BLOCKFILESACCESS
         }
+        else if network == "optGoerli" {
+            return String.OPT_GOERLI_BLOCKFILESACCESS
+        }
+        else if network == "goerli" {
+            return String.ETH_GOERLI_BLOCKFILESACCESS
+        }
+        else if network == "sphinx" {
+            return String.SPH_SPHINX_BLOCKFILESACCESS
+        }
         return ""
     }
     
     static func getAlchemyApiUrl(_ network: String) -> String {
         if network == "arbGoerli" {
             if let url = Environment.process.ARB_GOERLI_API {
+                return url
+            }
+        }
+        else if network == "optGoerli" {
+            if let url = Environment.process.OPT_GOERLI_API {
+                return url
+            }
+        }
+        else if network == "goerli" {
+            if let url = Environment.process.ETH_GOERLI_API {
+                return url
+            }
+        }
+        else if network == "sphinx" {
+            if let url = Environment.process.SPH_SPHINX_API {
                 return url
             }
         }
