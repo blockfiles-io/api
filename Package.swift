@@ -27,7 +27,7 @@ let package = Package(
                     .product(name: "Vapor", package: "vapor"),
                     .product(name: "Fluent", package: "fluent"),
                     .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"),
-                    .product(name: "SotoS3", package: "soto"),
+                    .product(name: "SotoS3", package: "soto"),                    
                     .product(name: "Web3", package: "Web3.swift"),
                     .product(name: "Web3ContractABI", package: "Web3.swift"),
                     .product(name: "SotoSignerV4", package: "soto-core"),

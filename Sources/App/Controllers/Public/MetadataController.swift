@@ -1,108 +1,57 @@
 //
-//  UploadController.swift
+//  MetadataController.swift
+//  
 //
-//
-//  Created by Ralph Küpper on 02/27/2023.
+//  Created by Ralph Küpper on 3/7/23.
 //
 
 import Fluent
 import Vapor
-import SotoSignerV4
 import SotoS3
 import Web3
 import Web3ContractABI
 
 @available(macOS 12, *)
-struct UploadController: RouteCollection {
+struct MetadataController: RouteCollection {
     func boot(routes: RoutesBuilder) throws {
         let group = routes
-        group.get("signedUrl", use: self.getSignedUrl)
-        group.post("check", use: self.checkUpload)
-        group.post("process", use: self.processUpload)
-        group.get(":code", use: self.getUpload)
-        group.get(["validate", ":code"], use: self.validate)
-        group.get(["finalize", ":code"], use: self.finalize)
-    }
-    /*
-     Provies a signed URL to upload to S3 directly. Will need to check how it works with big files but for now this enables us to not worry about accepting files directly.
-     Note: The s3 bucket we upload into is private and has no public access, so body can upload files for the public that way. It will also delete all files after 24h, so no abuse possible.
-     */
-    func getSignedUrl(_ req: Request) async throws -> UploadResponse {
-        let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
-        let key = String.randomString(length: 10)
-        let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
-        let url = URL(string: "https://s3.amazonaws.com/upload.blockfiles.io/\(key)")!
-        let signedURL = signer.signURL(url: url, method: .PUT, expires: .minutes(60))
-        
-        return UploadResponse(url: signedURL.absoluteString, key: key)
-    }
-    /*
-     Checks the size of a file, to calculate the fee.
-     */
-    func checkUpload(_ req: Request) async throws -> S3UploadResponse {
-        struct RequestData: Codable {
-            var key: String
-        }
-        let requestData = try req.content.decode(RequestData.self)
-        let s3 = S3(client: req.application.awsClient)
-        let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: requestData.key))
-        if let s = file.contentLength {
-            return S3UploadResponse(size: s)
-        }
-        return S3UploadResponse(size: 0)
+        group.get(["metadata", ":tokenId"], use: self.getMetadata)
+        group.get(["access", "metadata", ":tokenId"], use: self.getAccessMetadata)
     }
     
-    /*
-     This function only processes the upload in so far as it tells the system to "expect" it to be ready. Once the blockchain transaction is through
-     we get notified and can process the upload.
-     */
-    func processUpload(_ req: Request) async throws -> HTTPStatus{
-        struct RequestData: Codable {
-            var key: String
-            var transactionTx: String
-            var network: String
-            var expectedPayment: Double
-            var royaltyFee: Double
-            var maxHolders: Int
-            var name: String
-            var storage: String // only s3 for now
-        }
-        let requestData = try req.content.decode(RequestData.self)
-        let s3 = S3(client: req.application.awsClient)
-        let upload = Upload()
-        let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: requestData.key))
-        upload.size = 0
-        upload.contentType = ""
-        if let s = file.contentLength {
-            upload.size = Int(s)
-        }
-        if let s = file.contentType {
-            upload.contentType = s
-        }
-        upload.blockchain = requestData.network
-        upload.key = requestData.key
-        upload.transactionTx = requestData.transactionTx
-        upload.expectedPayment = requestData.expectedPayment
-        upload.royaltyFee = requestData.royaltyFee
-        upload.maxHolders = requestData.maxHolders
-        upload.name = requestData.name
-        upload.slug = requestData.name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.").inverted)
-        upload.desc = ""
-        upload.downloads = 0
-        upload.status = 0
-        upload.storage = requestData.storage
-        try await upload.save(on: req.db)
-        return .ok
-    }
-    
-    func getUpload(_ req: Request) async throws -> FullUploadResponse {
-        if let code = req.parameters.get("code") {
-            if let upload = try await Upload.query(on: req.db).filter(\.$key == code).first() {
-                print("upload: ", upload)
-                return FullUploadResponse(upload)
+    func getMetadata(_ req: Request) async throws -> ERC721Metadata {
+        var metadata = ERC721Metadata(name: "Your file?", description: "A decentrally shared file through [blockfiles.io](https://blockfiles.io).")
+        metadata.external_url = "https://blockfiles.io/"
+        if let code = req.parameters.get("tokenId") {
+            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == code).first() {
+                if upload.status == 2 {
+                    metadata.name = "Blockfiles.io: \(upload.name)"
+                    metadata.external_url = "https://blockfiles.io/file/\(upload.tokenId!)/\(upload.name)"
+                    metadata.attributes = []
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "name", value: .string(upload.name)))
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "contentType", value: .string(upload.contentType)))
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "size", value: .int(upload.size)))
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "downloads", value: .int(upload.downloads)))
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "free", value: .bool(upload.royaltyFee == 0)))
+                    metadata.attributes?.append(ERC721Metadata.Attribute(trait_type: "royaltyFee", value: .string("\(upload.royaltyFee)")))
+                }
             }
         }
-        throw Abort(.badRequest, reason: "Cannot load it.")
+        return metadata
+    }
+    func getAccessMetadata(_ req: Request) async throws -> ERC721Metadata {
+        var metadata = ERC721Metadata(name: "Access", description: "A decentrally shared access through [blockfiles.io](https://blockfiles.io).")
+        metadata.external_url = "https://blockfiles.io/"
+        if let code = req.parameters.get("tokenId") {
+            if let access = try await Access.query(on: req.db).filter(\.$tokenId == code).first() {
+                let upload = try await Upload.query(on: req.db).filter(\.$tokenId == access.uploadTokenId).first()!
+                metadata.name = "Blockfiles.io Access"
+                metadata.external_url = "https://blockfiles.io/file/\(access.uploadTokenId)/\(upload.name)"
+                metadata.attributes = []
+                    
+            }
+        }
+        return metadata
     }
     
     

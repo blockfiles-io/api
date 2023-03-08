@@ -11,4 +11,6 @@ public func routes(_ app: Application) throws {
 
 
     try root.grouped("uploads").register(collection: UploadController())
+    try root.grouped("files").register(collection: FileController())
+    try root.register(collection: MetadataController())
 }

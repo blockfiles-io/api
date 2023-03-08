@@ -37,6 +37,9 @@ final class Upload: Model {
     @Field(key: "name")
     var name: String
     
+    @Field(key: "slug")
+    var slug: String
+    
     @Field(key: "desc")
     var desc: String
     
