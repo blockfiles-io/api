@@ -25,4 +25,7 @@ final class Access: Model {
     @Field(key: "uploadTokenId")
     var uploadTokenId: String
     
+    @Field(key: "blockchain")
+    var blockchain: String
+    
 }

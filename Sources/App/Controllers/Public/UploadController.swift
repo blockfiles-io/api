@@ -149,7 +149,7 @@ struct UploadController: RouteCollection {
     
     func validateUpload(upload: Upload, on req: Request) async throws -> Bool {
         // step 0: make sure we have not ever used this transaction before
-        let uploads = try await Upload.query(on: req.db).filter(\.$status > 0).filter(\.$transactionTx == upload.transactionTx).count()
+        let uploads = try await Upload.query(on: req.db).filter(\.$status > 0).filter(\.$transactionTx == upload.transactionTx).filter(\.$blockchain == upload.blockchain).count()
         if uploads > 0 {
             Abort(.badRequest, reason: "Already used this transaction")
         }

@@ -209,8 +209,10 @@ struct FileController: RouteCollection {
     }
     
     func getFile(_ req: Request) async throws -> FullUploadResponse {
+        let blockchain = try req.query.get(String.self, at: "blockchain")
+        
         if let code = req.parameters.get("tokenId") {
-            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == code).first() {
+            if let upload = try await Upload.query(on: req.db).filter(\.$blockchain == blockchain).filter(\.$tokenId == code).first() {
                 print("upload: ", upload)
                 return FullUploadResponse(upload)
             }
@@ -292,9 +294,10 @@ struct FileController: RouteCollection {
         return bytes
     }
     func download(_ req: Request) async throws -> DownloadResponse {
+        let blockchain = try req.query.get(String.self, at: "blockchain")
         if let code = req.parameters.get("tokenId") {
             
-            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == code).first() {
+            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == code).filter(\.$blockchain == blockchain).first() {
                 let url = String.getAlchemyApiUrl(upload.blockchain)
                 let web3 = Web3(rpcURL: url)
                 
@@ -375,8 +378,9 @@ struct FileController: RouteCollection {
         throw Abort(.badRequest, reason: "Cannot load it.")
     }
     func checkPurchase(_ req: Request) async throws -> ValidationResponse {
+        let blockchain = try req.query.get(String.self, at: "blockchain")
         if let transactionHash = req.parameters.get("transactionHash"), let tokenId = req.parameters.get("tokenId") {
-            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == tokenId).first() {
+            if let upload = try await Upload.query(on: req.db).filter(\.$tokenId == tokenId).filter(\.$blockchain == blockchain).first() {
                 let processed = try await validateAccess(upload: upload, transactionTx: transactionHash, on: req)
                 return ValidationResponse(success: processed)
             }
@@ -386,7 +390,7 @@ struct FileController: RouteCollection {
     
     func validateAccess(upload: Upload, transactionTx: String, on req: Request) async throws -> Bool {
         // step 0: make sure we have not ever used this transaction before
-        let uploads = try await Access.query(on: req.db).filter(\.$transactionTx == transactionTx).count()
+        let uploads = try await Access.query(on: req.db).filter(\.$transactionTx == transactionTx).filter(\.$blockchain == upload.blockchain).count()
         if uploads > 0 {
             Abort(.badRequest, reason: "Already used this transaction")
         }
@@ -479,6 +483,7 @@ struct FileController: RouteCollection {
             access.tokenId = upload.tokenId!
             access.transactionTx = transactionTx
             access.uploadTokenId = upload.tokenId!
+            access.blockchain = upload.blockchain
             try await access.save(on: req.db)
             return true
         }
