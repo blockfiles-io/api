@@ -31,7 +31,7 @@ struct UploadController: RouteCollection {
         let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
         let key = String.randomString(length: 10)
         let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
-        let url = URL(string: "https://upload.blockfiles.io.s3-accelerate.amazonaws.com/\(key)")!
+        let url = URL(string: "https://s3.amazonaws.com/upload.blockfiles.io/\(key)")!
         let signedURL = signer.signURL(url: url, method: .PUT, expires: .minutes(60))
         
         return UploadResponse(url: signedURL.absoluteString, key: key)
