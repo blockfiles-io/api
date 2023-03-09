@@ -205,6 +205,7 @@ struct FileController: RouteCollection {
         let group = routes
         group.get(":tokenId", use: self.getFile)
         group.get(["download", ":tokenId"], use: self.download)
+        group.post(["download", ":tokenId"], use: self.download)
         group.get(["checkPurchase", ":transactionHash", ":tokenId"], use: self.checkPurchase)
     }
     
@@ -301,11 +302,26 @@ struct FileController: RouteCollection {
                 let url = String.getAlchemyApiUrl(upload.blockchain)
                 let web3 = Web3(rpcURL: url)
                 
+                if upload.password != "" && upload.royaltyFee == 0 {
+                    struct PasswordRequest: Codable {
+                        var password: String
+                    }
+                    let reqData = try req.content.decode(PasswordRequest.self)
+                    var passwordCheck = false
+                    if let check = try? Bcrypt.verify(reqData.password, created: upload.password), check == true {
+                        passwordCheck = true
+                    }
+                    if passwordCheck == false {
+                        throw Abort(.forbidden, reason: "Invalid password.")
+                    }
+                }
+                
                 let realUpload = try await self.updateToken(upload, on: req)
                 var allowedToDownload = false
                 var canBuy = false
                 var owns = false
-                if realUpload.royaltyFee == 0 {
+                if realUpload.royaltyFee == 0 && realUpload.web3only == 0 {
+                    // allow only for non-web3only
                     allowedToDownload = true
                 }
                 else {
@@ -333,26 +349,35 @@ struct FileController: RouteCollection {
                     let k = try EthereumPublicKeyCustom(message: bytes, v: v1, r: r1, s: s1)
                     let ethAddress:String = k.address.hex(eip55: false)
                     
-                    let accessContractAddress = EthereumAddress(hexString: String.getBlockfilesAccessSmartContractAddress(upload.blockchain))
-                    let accessContract = try web3.eth.Contract(json: String.getBlockfilesAccessAbiData(), abiKey: nil, address: accessContractAddress)
-                    var holdsAccessTokens = 0
-                    try await withCheckedThrowingContinuation { continuation in
-                        let tid:Int = Int(upload.tokenId!)!
-                        accessContract["balanceOf"]?(k.address, tid).call() { a, b in
-                            if let r = a {
-                                let str = "\(r[""]!)"
-                                holdsAccessTokens = Int(str)!
-                                continuation.resume()
+                    if realUpload.royaltyFee == 0 {
+                        // at this point we know this user has a metamask wallet and we can allowed the download
+                        allowedToDownload = true
+                    }
+                    else {
+                        let accessContractAddress = EthereumAddress(hexString: String.getBlockfilesAccessSmartContractAddress(upload.blockchain))
+                        let accessContract = try web3.eth.Contract(json: String.getBlockfilesAccessAbiData(), abiKey: nil, address: accessContractAddress)
+                        var holdsAccessTokens = 0
+                        try await withCheckedThrowingContinuation { continuation in
+                            let tid:Int = Int(upload.tokenId!)!
+                            accessContract["balanceOf"]?(k.address, tid).call() { a, b in
+                                if let r = a {
+                                    let str = "\(r[""]!)"
+                                    holdsAccessTokens = Int(str)!
+                                    continuation.resume()
+                                }
                             }
                         }
+                        owns = holdsAccessTokens > 0
                     }
-                    owns = holdsAccessTokens > 0
-                    
                 }
                 if owns {
                     allowedToDownload = true
                 }
                 if upload.maxHolders > 0 {
+                    if upload.royaltyFee == 0 {
+                        // in this case we don't have any holders, so the actual file downloads count towards the limit
+                        upload.downloads = upload.fileDownloads
+                    }
                     if upload.downloads < upload.maxHolders {
                         canBuy = true
                     }

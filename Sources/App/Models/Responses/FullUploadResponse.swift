@@ -26,6 +26,8 @@ public struct FullUploadResponse: Content {
     var blockchain: String
     var contentType: String
     var downloads: Int
+    var hasPassword: Bool
+    var web3only: Bool
     var createdAt: Date?
     
     init (_ up: Upload) {
@@ -38,6 +40,8 @@ public struct FullUploadResponse: Content {
         self.royaltyFee = up.royaltyFee
         self.name = up.name
         self.desc = up.desc
+        self.web3only = up.web3only == 1
+        self.hasPassword = up.password != ""
         self.finalUrl = up.finalUrl
         self.storage = up.storage
         self.maxHolders = up.maxHolders

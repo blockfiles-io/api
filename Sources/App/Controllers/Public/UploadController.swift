@@ -65,6 +65,8 @@ struct UploadController: RouteCollection {
             var royaltyFee: Double
             var maxHolders: Int
             var name: String
+            var password: String
+            var web3only: Bool
             var storage: String // only s3 for now
         }
         let requestData = try req.content.decode(RequestData.self)
@@ -86,7 +88,11 @@ struct UploadController: RouteCollection {
         upload.royaltyFee = requestData.royaltyFee
         upload.maxHolders = requestData.maxHolders
         upload.name = requestData.name
-        upload.slug = requestData.name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted)
+        upload.web3only = requestData.web3only ? 1 : 0
+        if requestData.password != "" {
+            upload.password = try Bcrypt.hash(requestData.password)
+        }
+        upload.slug = requestData.name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted).replacingOccurrences(of: ".", with: "-")
         upload.desc = ""
         upload.downloads = 0
         upload.fileDownloads = 0

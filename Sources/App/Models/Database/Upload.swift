@@ -52,6 +52,9 @@ final class Upload: Model {
     @Field(key: "maxHolders")
     var maxHolders: Int
     
+    @Field(key: "web3only")
+    var web3only: Int
+    
     // 0 = uploaded, not paid
     // 1 = uploaded and paid
     // 2 = upload, paid and stored
@@ -67,6 +70,9 @@ final class Upload: Model {
     
     @Field(key: "contentType")
     var contentType: String
+    
+    @Field(key: "password")
+    var password: String
 
     @Field(key: "downloads")
     var downloads: Int
