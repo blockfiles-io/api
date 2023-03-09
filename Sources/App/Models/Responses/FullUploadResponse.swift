@@ -18,7 +18,7 @@ public struct FullUploadResponse: Content {
     var royaltyFee: Double
     var name: String
     var desc: String
-    var finalUrl: String
+    var slug: String
     var storage: String
     var maxHolders: Int
     var status: Int
@@ -42,7 +42,7 @@ public struct FullUploadResponse: Content {
         self.desc = up.desc
         self.web3only = up.web3only == 1
         self.hasPassword = up.password != ""
-        self.finalUrl = up.finalUrl
+        self.slug = up.slug
         self.storage = up.storage
         self.maxHolders = up.maxHolders
         self.status = up.status
