@@ -20,6 +20,12 @@ extension String {
     static var MAT_MUMBAI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
     static var MAT_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
     static var MAT_BLOCKFILESACCESS = "0x37fe0aC287B8c061cf1cb3a886E1BF17b89a658A"
+    static var ARB_BLOCKFILES = ""
+    static var ARB_BLOCKFILESACCESS = ""
+    static var ETH_BLOCKFILES = ""
+    static var ETH_BLOCKFILESACCESS = ""
+    static var OPT_BLOCKFILES = ""
+    static var OPT_BLOCKFILESACCESS = ""
     
     static func getBlockfilesSmartContractAddress(_ network: String) -> String {
         if network == "arbGoerli" {
@@ -39,6 +45,15 @@ extension String {
         }
         else if network == "polygon" {
             return String.MAT_BLOCKFILES
+        }
+        else if network == "arbitrum" {
+            return String.ARB_BLOCKFILES
+        }
+        else if network == "optimism" {
+            return String.OPT_BLOCKFILES
+        }
+        else if network == "ethereum" {
+            return String.ETH_BLOCKFILES
         }
         return ""
     }
@@ -60,6 +75,15 @@ extension String {
         }
         else if network == "polygon" {
             return String.MAT_BLOCKFILESACCESS
+        }
+        else if network == "arbitrum" {
+            return String.ARB_BLOCKFILESACCESS
+        }
+        else if network == "optimism" {
+            return String.OPT_BLOCKFILESACCESS
+        }
+        else if network == "ethereum" {
+            return String.ETH_BLOCKFILESACCESS
         }
         return ""
     }
@@ -92,6 +116,21 @@ extension String {
         }
         else if network == "polygon" {
             if let url = Environment.process.MATIC_API {
+                return url
+            }
+        }
+        else if network == "arbitrum" {
+            if let url = Environment.process.ARB_API {
+                return url
+            }
+        }
+        else if network == "optimism" {
+            if let url = Environment.process.OPT_API {
+                return url
+            }
+        }
+        else if network == "ethereum" {
+            if let url = Environment.process.ETH_API {
                 return url
             }
         }
