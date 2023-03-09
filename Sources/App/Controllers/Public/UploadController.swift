@@ -12,53 +12,28 @@ import SotoS3
 import Web3
 import Web3ContractABI
 
+struct BlockchainValidationResponse: Content {
+    var blockchainConfirmed: Bool = false
+    var url: String? = nil
+}
+
 @available(macOS 12, *)
 struct UploadController: RouteCollection {
     func boot(routes: RoutesBuilder) throws {
         let group = routes
-        group.get("signedUrl", use: self.getSignedUrl)
-        group.post("check", use: self.checkUpload)
         group.post("process", use: self.processUpload)
         group.get(":code", use: self.getUpload)
         group.get(["validate", ":code"], use: self.validate)
         group.get(["finalize", ":code"], use: self.finalize)
     }
-    /*
-     Provies a signed URL to upload to S3 directly. Will need to check how it works with big files but for now this enables us to not worry about accepting files directly.
-     Note: The s3 bucket we upload into is private and has no public access, so body can upload files for the public that way. It will also delete all files after 24h, so no abuse possible.
-     */
-    func getSignedUrl(_ req: Request) async throws -> UploadResponse {
-        let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
-        let key = String.randomString(length: 10)
-        let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
-        let url = URL(string: "https://s3.amazonaws.com/upload.blockfiles.io/\(key)")!
-        let signedURL = signer.signURL(url: url, method: .PUT, expires: .minutes(60))
-        
-        return UploadResponse(url: signedURL.absoluteString, key: key)
-    }
-    /*
-     Checks the size of a file, to calculate the fee.
-     */
-    func checkUpload(_ req: Request) async throws -> S3UploadResponse {
-        struct RequestData: Codable {
-            var key: String
-        }
-        let requestData = try req.content.decode(RequestData.self)
-        let s3 = S3(client: req.application.awsClient)
-        let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: requestData.key))
-        if let s = file.contentLength {
-            return S3UploadResponse(size: s)
-        }
-        return S3UploadResponse(size: 0)
-    }
+
     
     /*
      This function only processes the upload in so far as it tells the system to "expect" it to be ready. Once the blockchain transaction is through
      we get notified and can process the upload.
      */
-    func processUpload(_ req: Request) async throws -> HTTPStatus{
+    func processUpload(_ req: Request) async throws -> FullUploadResponse {
         struct RequestData: Codable {
-            var key: String
             var transactionTx: String
             var network: String
             var expectedPayment: Double
@@ -66,29 +41,25 @@ struct UploadController: RouteCollection {
             var maxHolders: Int
             var name: String
             var password: String
+            var size: Int
             var web3only: Bool
             var storage: String // only s3 for now
         }
         let requestData = try req.content.decode(RequestData.self)
         let s3 = S3(client: req.application.awsClient)
         let upload = Upload()
-        let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: requestData.key))
-        upload.size = 0
+        upload.size = requestData.size
         upload.contentType = ""
-        if let s = file.contentLength {
-            upload.size = Int(s)
-        }
-        if let s = file.contentType {
-            upload.contentType = s
-        }
+        
         upload.blockchain = requestData.network
-        upload.key = requestData.key
+        upload.key = String.randomString(length: 10)
         upload.transactionTx = requestData.transactionTx
         upload.expectedPayment = requestData.expectedPayment
         upload.royaltyFee = requestData.royaltyFee
         upload.maxHolders = requestData.maxHolders
         upload.name = requestData.name
         upload.web3only = requestData.web3only ? 1 : 0
+        upload.password = ""
         if requestData.password != "" {
             upload.password = try Bcrypt.hash(requestData.password)
         }
@@ -97,9 +68,12 @@ struct UploadController: RouteCollection {
         upload.downloads = 0
         upload.fileDownloads = 0
         upload.status = 0
+        upload.tokenId = nil
+        upload.payment = 0
+        upload.finalUrl = ""
         upload.storage = requestData.storage
         try await upload.save(on: req.db)
-        return .ok
+        return FullUploadResponse(upload)
     }
     
     func getUpload(_ req: Request) async throws -> FullUploadResponse {
@@ -113,13 +87,20 @@ struct UploadController: RouteCollection {
     }
     
     
-    func validate(_ req: Request) async throws -> HTTPStatus{
+    func validate(_ req: Request) async throws -> BlockchainValidationResponse {
         if let code = req.parameters.get("code") {
             if let upload = try await Upload.query(on: req.db).filter(\.$key == code).first() {
+                var val = false
+                var url:String? = nil
                 if upload.status == 0 {
-                    try await validateUpload(upload: upload, on: req)
+                    val = try await validateUpload(upload: upload, on: req)
+                    let cred = try await req.application.awsClient.credentialProvider.getCredential(on: req.eventLoop, logger: req.logger).get()
+                    let signer = AWSSigner(credentials: cred, name: "s3", region: "us-east-1")
+                    let signedURL = signer.signURL(url: URL(string: "https://s3.amazonaws.com/upload.blockfiles.io/\(upload.key)")!, method: .PUT, expires: .minutes(60))
+                    
+                    url = signedURL.absoluteString
                 }
-                return .ok
+                return BlockchainValidationResponse(blockchainConfirmed: val, url: url)
             }
         }
         throw Abort(.badRequest, reason: "Cannot load it.")
@@ -142,7 +123,17 @@ struct UploadController: RouteCollection {
         }
         if upload.storage == "s3" {
             let s3 = S3(client: req.application.awsClient)
+            
             let url = "https://s3.amazonaws.com/upload.blockfiles.io/\(upload.key)"
+            
+            let file = try await s3.headObject(S3.HeadObjectRequest(bucket: "upload.blockfiles.io", key: upload.key))
+            if let s = file.contentLength {
+                upload.size = Int(s)
+            }
+            if let s = file.contentType {
+                upload.contentType = s
+            }
+            
             try await s3.copyObject(S3.CopyObjectRequest(bucket: "final.blockfiles.io", copySource: "\(url)", key: upload.key))
             try await s3.deleteObject(S3.DeleteObjectRequest(bucket: "upload.blockfiles.io", key: upload.key))
             
