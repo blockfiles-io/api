@@ -18,14 +18,18 @@ extension String {
     static var SPH_SPHINX_BLOCKFILESACCESS = "0x5e41ccc3599785aa5f66dfc3da6cd1f9c8e64d63"
     static var MAT_MUMBAI_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
     static var MAT_MUMBAI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
+    static var BASE_GOERLI_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
+    static var BASE_GOERLI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
     static var MAT_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
     static var MAT_BLOCKFILESACCESS = "0x37fe0aC287B8c061cf1cb3a886E1BF17b89a658A"
-    static var ARB_BLOCKFILES = ""
-    static var ARB_BLOCKFILESACCESS = ""
+    static var ARB_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
+    static var ARB_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
     static var ETH_BLOCKFILES = ""
     static var ETH_BLOCKFILESACCESS = ""
-    static var OPT_BLOCKFILES = ""
-    static var OPT_BLOCKFILESACCESS = ""
+    static var OPT_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
+    static var OPT_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
+    static var BASE_BLOCKFILES = ""
+    static var BASE_BLOCKFILESACCESS = ""
     
     static func getBlockfilesSmartContractAddress(_ network: String) -> String {
         if network == "arbGoerli" {
@@ -42,6 +46,9 @@ extension String {
         }
         else if network == "mumbai" {
             return String.MAT_MUMBAI_BLOCKFILES
+        }
+        else if network == "baseGoerli" {
+            return String.BASE_BLOCKFILES
         }
         else if network == "polygon" {
             return String.MAT_BLOCKFILES
@@ -72,6 +79,9 @@ extension String {
         }
         else if network == "mumbai" {
             return String.MAT_MUMBAI_BLOCKFILESACCESS
+        }
+        else if network == "baseGoerli" {
+            return String.BASE_BLOCKFILESACCESS
         }
         else if network == "polygon" {
             return String.MAT_BLOCKFILESACCESS
@@ -111,6 +121,11 @@ extension String {
         }
         else if network == "mumbai" {
             if let url = Environment.process.MATIC_MUMBAI_API {
+                return url
+            }
+        }
+        else if network == "baseGoerli" {
+            if let url = Environment.process.BASE_GOERLI_API {
                 return url
             }
         }
