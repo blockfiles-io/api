@@ -16,6 +16,8 @@ extension String {
     static var OPT_GOERLI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
     static var SPH_SPHINX_BLOCKFILES = "0x7d57b63596d347fcc0801b1ce3fc5c1e8d82324d"
     static var SPH_SPHINX_BLOCKFILESACCESS = "0x5e41ccc3599785aa5f66dfc3da6cd1f9c8e64d63"
+    static var MAT_MUMBAI_BLOCKFILES = "0x5e41CcC3599785AA5F66dfc3da6cD1f9C8e64D63"
+    static var MAT_MUMBAI_BLOCKFILESACCESS = "0x2bE78D8befea0D091b144C60CCcBb224D435A4c2"
     
     static func getBlockfilesSmartContractAddress(_ network: String) -> String {
         if network == "arbGoerli" {
@@ -29,6 +31,9 @@ extension String {
         }
         else if network == "sphinx" {
             return String.SPH_SPHINX_BLOCKFILES
+        }
+        else if network == "mumbai" {
+            return String.MAT_MUMBAI_BLOCKFILES
         }
         return ""
     }
@@ -44,6 +49,9 @@ extension String {
         }
         else if network == "sphinx" {
             return String.SPH_SPHINX_BLOCKFILESACCESS
+        }
+        else if network == "mumbai" {
+            return String.MAT_MUMBAI_BLOCKFILESACCESS
         }
         return ""
     }
@@ -66,6 +74,11 @@ extension String {
         }
         else if network == "sphinx" {
             if let url = Environment.process.SPH_SPHINX_API {
+                return url
+            }
+        }
+        else if network == "mumbai" {
+            if let url = Environment.process.MATIC_MUMBAI_API {
                 return url
             }
         }
